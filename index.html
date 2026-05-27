@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运动记录解析工具</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1a1a1a;background:#f5f5f3;min-height:100vh;padding:24px}
+h1{font-size:17px;font-weight:500;margin-bottom:20px;color:#1a1a1a}
+h2{font-size:14px;font-weight:500;margin-bottom:12px}
+h3{font-size:13px;font-weight:500;margin-bottom:8px}
+.card{background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.col{flex:1;min-width:260px}
+label{display:block;font-size:12px;color:#666;margin-bottom:4px;margin-top:10px}
+label:first-child{margin-top:0}
+.upload-zone{border:1px dashed rgba(0,0,0,0.2);border-radius:8px;padding:18px 16px;text-align:center;cursor:pointer;transition:background 0.15s;min-height:72px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.upload-zone:hover{background:#f9f9f7}
+.upload-zone.has-file{border-style:solid;border-color:rgba(0,0,0,0.3);background:#f9f9f7}
+.fn{font-weight:500;font-size:13px}
+.hint{font-size:11px;color:#999}
+.upload-icon{font-size:20px;margin-bottom:2px}
+input[type=file]{display:none}
+button{cursor:pointer;padding:7px 18px;border-radius:8px;border:0.5px solid rgba(0,0,0,0.2);background:transparent;font-size:13px;font-family:inherit;transition:background 0.1s}
+button:hover{background:#f5f5f3}
+button.primary{background:#E24B4A;color:#fff;border-color:#E24B4A;font-weight:500;padding:8px 20px}
+button.primary:hover{background:#c43a3a}
+button.primary:disabled{background:#ccc;border-color:#ccc;cursor:not-allowed}
+.status{font-size:12px;color:#666;min-height:18px}
+.status.err{color:#A32D2D}
+.status.ok{color:#3B6D11}
+.divider{height:0.5px;background:rgba(0,0,0,0.1);margin:14px 0}
+.tag-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+.tag-card{background:#f9f9f7;border-radius:8px;padding:10px 12px;cursor:default;border:0.5px solid transparent;transition:border-color 0.15s,background 0.15s}
+.tag-card.clickable{cursor:pointer}
+.tag-card.clickable:hover{background:#FCEBEB;border-color:#E24B4A}
+.tag-card.selected{background:#FCEBEB;border-color:#E24B4A}
+.tname{font-size:12px;font-weight:500}
+.tcount{font-size:22px;font-weight:500;color:#E24B4A;margin-top:2px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin:10px 0}
+.metric{background:#f9f9f7;border-radius:8px;padding:10px}
+.ml{font-size:11px;color:#666}
+.mv{font-size:18px;font-weight:500;margin-top:2px}
+.chart-wrap{position:relative;width:100%;height:320px;margin-top:10px}
+.legend{display:flex;gap:12px;margin-bottom:6px;font-size:12px;color:#666;align-items:center}
+.legend i{width:20px;height:2px;background:#E24B4A;display:inline-block;border-radius:2px;margin-right:4px}
+.prog{display:none;height:3px;background:#f0f0f0;border-radius:2px;margin-top:8px;overflow:hidden}
+.prog-bar{height:100%;background:#E24B4A;border-radius:2px;transition:width 0.2s;width:0%}
+.zone-bar{display:flex;border-radius:6px;overflow:hidden;height:10px;margin-top:6px}
+.zone-bar span{height:100%;transition:width 0.3s}
+.zone-labels{display:flex;justify-content:space-between;font-size:10px;color:#999;margin-top:3px}
+.log{font-size:11px;color:#999;margin-top:6px;font-family:monospace;max-height:60px;overflow-y:auto;background:#f9f9f7;border-radius:4px;padding:4px 8px}
+</style>
+</head>
+<body>
+
+<h1>运动记录解析工具</h1>
+
+<div class="card">
+  <div class="row">
+    <div class="col">
+      <h2>选择文件</h2>
+      <label>detail.data（必选）</label>
+      <div class="upload-zone" id="zone-detail" onclick="document.getElementById('file-detail').click()">
+        <div class="upload-icon">📂</div>
+        <span class="hint" id="hint-detail">点击选择 detail.data 文件</span>
+      </div>
+      <input type="file" id="file-detail" onchange="onDetailFile(this)">
+
+      <label>sport_record_save_detail.h（可选，暂不使用）</label>
+      <div class="upload-zone" id="zone-h" onclick="document.getElementById('file-h').click()">
+        <div class="upload-icon">📄</div>
+        <span class="hint" id="hint-h">点击选择 .h 头文件</span>
+      </div>
+      <input type="file" id="file-h" onchange="onHeaderFile(this)">
+    </div>
+
+    <div class="col">
+      <h2>输出目录</h2>
+      <p style="font-size:12px;color:#666;line-height:1.6;margin-bottom:10px">
+        解析后各 TAG 数据将按文件名自动分类存储。<br>
+        点击"解析并下载"，所有数据打包为 .zip 文件下载到本地。
+      </p>
+      <button class="primary" id="btn-parse" disabled onclick="doParse()">解析并下载 ZIP</button>
+      <div class="prog" id="prog"><div class="prog-bar" id="prog-bar"></div></div>
+      <div class="status" id="parse-status" style="margin-top:8px"></div>
+      <div class="log" id="parse-log" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAG 统计 + 图表 -->
+<div id="result-area" style="display:none">
+  <div class="card">
+    <h2>数据类型统计</h2>
+    <div class="metrics" id="metrics-wrap"></div>
+    <div class="divider"></div>
+    <h3>点击数据类型查看图表</h3>
+    <div class="tag-grid" id="tag-grid"></div>
+  </div>
+
+  <div class="card" id="card-chart" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h2 id="chart-title">心率曲线</h2>
+      <div class="legend"><i></i>心率 (bpm)</div>
+    </div>
+    <div class="metrics" id="hr-metrics"></div>
+    <div class="chart-wrap">
+      <canvas id="hrChart" role="img" aria-label="运动心率曲线图，横轴为时间，纵轴为心率">心率曲线</canvas>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ─────────────── TLV 解析核心（JS 版，与 Python 逻辑一致） ───────────────
+const TAG_NAMES = {
+  1:'TIMESTAMP',2:'GPS_FULL',3:'GPS_DIFF',4:'EVENT',5:'RT_GROUP_1',6:'RT_GROUP_2',
+  7:'RT_ALTITUDE',8:'RT_HEARTRATE',9:'RT_SPO2',10:'LAB_KM',11:'LAB_GROUP',
+  12:'RT_PRESSURE',13:'TEMPERATURE',14:'ALTITUDE_OFFSET',15:'STRENGTH_GROUP',
+  16:'GOLF_GROUP',17:'RT_GROUP_GOLF',18:'RT_POWER',19:'PLAYGROUND_PARA',
+  20:'SWIM_TRIP',21:'DOWNHILL_CLIMB',22:'DIVE',23:'RTPC',24:'LAP_RUNNING_TRACK',
+  25:'LAP_SKYDIVING',26:'DOWN_SPEED',27:'RT_CADENCE',28:'DEPTH',29:'RUNNING_POWER',
+  30:'CLIMBING_GROUP',
+  0x001F:'BAROMETER_GROUP',0x011F:'DELAY_EVENT',0x021F:'RT_SURFING',
+  0x031F:'LAP_FISHING',0x041F:'AIR_PRESSURE',0x051F:'REST_TIME',
+  0x061F:'ASSESS_SCORE',0x071F:'RUN_POSTURE',0x081F:'GOLF_COURSE',
+  0x091F:'SEC_LEVEL_DATA',0x0A1F:'STRYD_DATA',0x0B1F:'EQUIVALENT_DATA',
+  0x0C1F:'ALT_SEG_OFFSET',0x0D1F:'HYROX_LAP',0x0E1F:'HYROX_REP',
+  0x0F1F:'HYROX_BLOCK_DATA',0x101F:'HYROX_BLOCK_ROUND',0x111F:'HYROX_BLOCK_EXERCISE',
+};
+const HYROX_TYPES = {0:'无',1:'跑步',2:'滑雪机',3:'推雪橇',4:'拉雪橇',5:'波比跳远',6:'划船机',7:'农夫行走',8:'沙袋弓步',9:'药球',10:'休息'};
+const EVENT_NAMES = {1:'START',2:'AUTO_PAUSE',3:'AUTO_RESUME',4:'PAUSE',5:'RESUME',6:'STOP'};
+const LAP_TYPES = {0:'手动分段',1:'自动分段',2:'分组',3:'分段(融合)',4:'训练分段'};
+
+function r8(dv,o){return dv.getUint8(o)}
+function r16(dv,o){return dv.getUint16(o,true)}
+function r32(dv,o){return dv.getUint32(o,true)}
+function ri32(dv,o){return dv.getInt32(o,true)}
+function rf32(dv,o){return Math.round(dv.getFloat32(o,true)*100)/100}
+
+function parsers(tag, bytes){
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const n = bytes.byteLength;
+  try {
+    switch(tag){
+      case 1: if(n<12) break; return {magic_hex:'0x'+r32(dv,0).toString(16).toUpperCase().padStart(8,'0'), time_ms: Number(dv.getBigUint64(4,true)), time_str: new Date(Number(dv.getBigUint64(4,true))).toISOString()};
+      case 4: if(n<4) break; return {relative_time_ms:r16(dv,0), index:r16(dv,2), event_name:EVENT_NAMES[r16(dv,2)]||'UNKNOWN'};
+      case 5: if(n<8) break; return {relative_time_ms:r16(dv,0), freq_step_per_min:r16(dv,2), stride_cm:r16(dv,4), pace_s_per_km:r16(dv,6)};
+      case 7: if(n<6) break; return {relative_time_ms:r16(dv,0), altitude_cm:ri32(dv,2), altitude_m:Math.round(ri32(dv,2)/100*100)/100};
+      case 8: if(n<3) break; return {relative_time_ms:r16(dv,0), hr_bpm:r8(dv,2)};
+      case 9: if(n<3) break; return {relative_time_ms:r16(dv,0), spo2_percent:r8(dv,2)};
+      case 12: if(n<3) break; return {relative_time_ms:r16(dv,0), stress:r8(dv,2)};
+      case 27: if(n<6) break; return {relative_time_ms:r16(dv,0), cadence_rpm:r32(dv,2)};
+      case 29: if(n<4) break; return {relative_time_ms:r16(dv,0), running_power_w:r16(dv,2)};
+      case 0x091F: if(n<6) break; return {relative_time_ms:r16(dv,0), total_distance_cm:r32(dv,2), total_distance_m:Math.round(r32(dv,2)/100*100)/100};
+      case 0x041F: if(n<6) break; return {relative_time_ms:r16(dv,0), air_pressure_mbar:r32(dv,2)};
+      case 0x051F: if(n<6) break; return {relative_time_ms:r16(dv,0), rest_time_ms:r32(dv,2)};
+      case 0x0D1F: if(n<20) break; return {
+        relative_time_ms:r16(dv,0), index:r16(dv,2),
+        type:LAP_TYPES[r8(dv,4)]||r8(dv,4), avg_hr:r8(dv,5),
+        hyrox_station_type:HYROX_TYPES[r16(dv,6)]||r16(dv,6),
+        cal:r16(dv,8), lap_time_ms:r32(dv,10),
+        muscular_load:rf32(dv,14), cardiac_load:rf32(dv,18),
+      };
+      default: return {raw_hex: Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('')};
+    }
+  } catch(e) {}
+  return {raw_hex: Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('')};
+}
+
+function parseDetailBinary(buffer, onProgress) {
+  const raw = new Uint8Array(buffer);
+  const total = raw.length;
+  const groups = {};
+  let pos = 0;
+  let count = 0;
+  const TICK = 10000;
+
+  while (pos < total - 1) {
+    const first = raw[pos];
+    let tag, hdrSize, length;
+
+    if (first === 0x1F || (first > 30)) {
+      // 双字节 TAG
+      if (pos + 2 >= total) break;
+      const dv = new DataView(buffer, pos, 2);
+      tag = dv.getUint16(0, true);
+      length = raw[pos + 2];
+      hdrSize = 3;
+    } else {
+      tag = first;
+      length = raw[pos + 1];
+      hdrSize = 2;
+    }
+
+    const dataStart = pos + hdrSize;
+    const dataEnd = dataStart + length;
+    if (dataEnd > total) break;
+
+    const bytes = raw.slice(dataStart, dataEnd);
+    const tagName = TAG_NAMES[tag] || ('UNKNOWN_0x' + tag.toString(16).toUpperCase().padStart(4,'0'));
+
+    if (!groups[tagName]) groups[tagName] = [];
+    groups[tagName].push({
+      offset: pos,
+      tag: tag,
+      tag_name: tagName,
+      length: length,
+      data: parsers(tag, bytes),
+    });
+
+    count++;
+    if (count % TICK === 0 && onProgress) {
+      onProgress(Math.min(99, Math.round(pos / total * 100)));
+    }
+    pos = dataEnd;
+  }
+  return {total: count, groups};
+}
+
+// ─────────────── ZIP 打包（纯 JS） ───────────────
+// 使用 fflate 库进行 ZIP 压缩
+function makeZip(files) {
+  // files: { filename: Uint8Array }
+  // 简单无压缩 ZIP（stored）
+  const parts = [];
+  const centralDir = [];
+  let offset = 0;
+
+  function strToBytes(s) {
+    return new TextEncoder().encode(s);
+  }
+  function u16le(n) { return [(n&0xFF),((n>>8)&0xFF)]; }
+  function u32le(n) { return [(n&0xFF),((n>>8)&0xFF),((n>>16)&0xFF),((n>>24)&0xFF)]; }
+
+  function crc32(data) {
+    let c = 0xFFFFFFFF;
+    const table = crc32.table || (crc32.table = (() => {
+      const t = new Uint32Array(256);
+      for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++) c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c;}
+      return t;
+    })());
+    for(let i=0;i<data.length;i++) c = table[(c^data[i])&0xFF]^(c>>>8);
+    return (c^0xFFFFFFFF)>>>0;
+  }
+
+  for (const [name, data] of Object.entries(files)) {
+    const nameBytes = strToBytes(name);
+    const crc = crc32(data);
+    const size = data.length;
+    const ts = new Date();
+    const dosDate = ((ts.getFullYear()-1980)<<9)|((ts.getMonth()+1)<<5)|ts.getDate();
+    const dosTime = (ts.getHours()<<11)|(ts.getMinutes()<<5)|(ts.getSeconds()>>1);
+
+    const localHeader = new Uint8Array([
+      0x50,0x4B,0x03,0x04, // sig
+      20,0,               // version needed
+      0,0,                // flags
+      0,0,                // compression (stored)
+      ...u16le(dosTime),...u16le(dosDate),
+      ...u32le(crc),
+      ...u32le(size),...u32le(size), // compressed = uncompressed
+      ...u16le(nameBytes.length),0,0, // name len, extra len
+      ...nameBytes,
+    ]);
+
+    centralDir.push({localHeader, nameBytes, crc, size, offset, dosDate, dosTime});
+    parts.push(localHeader);
+    parts.push(data);
+    offset += localHeader.length + size;
+  }
+
+  // Central directory
+  const cdParts = [];
+  let cdSize = 0;
+  const cdOffset = offset;
+  for (const {nameBytes, crc, size, offset: lhOffset, dosDate, dosTime} of centralDir) {
+    const cd = new Uint8Array([
+      0x50,0x4B,0x01,0x02,
+      20,0,20,0,0,0,0,0,
+      ...u16le(dosTime),...u16le(dosDate),
+      ...u32le(crc),
+      ...u32le(size),...u32le(size),
+      ...u16le(nameBytes.length),0,0,0,0,0,0,0,
+      ...u32le(0),
+      ...u32le(lhOffset),
+      ...nameBytes,
+    ]);
+    cdParts.push(cd);
+    cdSize += cd.length;
+  }
+
+  const eocd = new Uint8Array([
+    0x50,0x4B,0x05,0x06,0,0,0,0,
+    ...u16le(centralDir.length),...u16le(centralDir.length),
+    ...u32le(cdSize),...u32le(cdOffset),
+    0,0,
+  ]);
+
+  // concat all
+  const totalSize = parts.reduce((s,p)=>s+p.length,0) + cdSize + eocd.length;
+  const out = new Uint8Array(totalSize);
+  let pos = 0;
+  for (const p of [...parts,...cdParts,[eocd]]) {
+    out.set(p, pos); pos += p.length;
+  }
+  return out;
+}
+
+// ─────────────── UI 逻辑 ───────────────
+let detailFile = null;
+let parsedGroups = null;
+let hrChart = null;
+
+function onDetailFile(input) {
+  detailFile = input.files[0];
+  if (!detailFile) return;
+  const zone = document.getElementById('zone-detail');
+  zone.classList.add('has-file');
+  zone.innerHTML = `<div class="fn">${detailFile.name}</div><div class="hint">${(detailFile.size/1024).toFixed(1)} KB</div>`;
+  document.getElementById('btn-parse').disabled = false;
+  setStatus('');
+}
+
+function onHeaderFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const zone = document.getElementById('zone-h');
+  zone.classList.add('has-file');
+  zone.innerHTML = `<div class="fn">${f.name}</div><div class="hint">${(f.size/1024).toFixed(1)} KB</div>`;
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('parse-status');
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' '+type : '');
+}
+
+function setProgress(pct) {
+  const prog = document.getElementById('prog');
+  const bar = document.getElementById('prog-bar');
+  prog.style.display = 'block';
+  bar.style.width = pct + '%';
+  if (pct >= 100) setTimeout(()=>{prog.style.display='none';},600);
+}
+
+function log(msg) {
+  const el = document.getElementById('parse-log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function doParse() {
+  if (!detailFile) return;
+  document.getElementById('btn-parse').disabled = true;
+  document.getElementById('parse-log').textContent = '';
+  document.getElementById('result-area').style.display = 'none';
+  setStatus('读取文件...'); setProgress(5);
+
+  const buffer = await detailFile.arrayBuffer();
+  setStatus('解析中...'); setProgress(10);
+  log('开始解析: ' + detailFile.name + ' (' + (detailFile.size/1024).toFixed(1) + ' KB)');
+
+  // 用 setTimeout 让 UI 先刷新
+  await new Promise(r=>setTimeout(r,0));
+
+  let result;
+  try {
+    result = parseDetailBinary(buffer, p=>{setProgress(10+p*0.7);});
+  } catch(e) {
+    setStatus('解析失败: '+e.message, 'err');
+    document.getElementById('btn-parse').disabled = false;
+    return;
+  }
+
+  parsedGroups = result.groups;
+  log(`解析完成，共 ${result.total} 条记录，${Object.keys(result.groups).length} 种 TAG`);
+  setProgress(85);
+  setStatus('打包 ZIP...');
+
+  // 生成 ZIP
+  const ts = new Date().toISOString().replace(/[:.]/g,'-').substring(0,19);
+  const dirname = ts + '_' + detailFile.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+
+  const zipFiles = {};
+  const summary = {
+    source_file: detailFile.name,
+    total_records: result.total,
+    tag_summary: {},
+    files: {},
+  };
+
+  for (const [tagName, recs] of Object.entries(result.groups)) {
+    summary.tag_summary[tagName] = recs.length;
+    const fname = dirname + '/' + tagName + '.json';
+    zipFiles[fname] = new TextEncoder().encode(JSON.stringify(recs, null, 2));
+    summary.files[tagName] = tagName + '.json';
+  }
+  zipFiles[dirname + '/summary.json'] = new TextEncoder().encode(JSON.stringify(summary, null, 2));
+
+  setProgress(95);
+  const zipBytes = makeZip(zipFiles);
+  setProgress(100);
+
+  // 下载
+  const blob = new Blob([zipBytes], {type:'application/zip'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=dirname+'.zip'; a.click();
+  URL.revokeObjectURL(url);
+
+  log('ZIP 已下载: ' + dirname + '.zip');
+  setStatus(`解析完成！共 ${result.total} 条记录，ZIP 已下载`, 'ok');
+
+  renderResult(result);
+  document.getElementById('btn-parse').disabled = false;
+}
+
+function renderResult(result) {
+  const area = document.getElementById('result-area');
+  area.style.display = '';
+
+  // 统计指标
+  const tags = {};
+  for (const [k,v] of Object.entries(result.groups)) tags[k] = v.length;
+  const wrap = document.getElementById('metrics-wrap');
+  const items = [
+    {l:'总记录数', v: result.total},
+    {l:'数据类型', v: Object.keys(tags).length},
+    {l:'心率采样', v: tags['RT_HEARTRATE']||'-'},
+    {l:'秒级数据', v: tags['SEC_LEVEL_DATA']||'-'},
+    {l:'HYROX分段', v: tags['HYROX_LAP']||'-'},
+  ];
+  wrap.innerHTML = items.map(i=>`<div class="metric"><div class="ml">${i.l}</div><div class="mv">${i.v}</div></div>`).join('');
+
+  // TAG 卡片
+  const grid = document.getElementById('tag-grid');
+  grid.innerHTML = '';
+  const CHARTABLE = {RT_HEARTRATE:'心率曲线'};
+  Object.entries(tags).sort((a,b)=>b[1]-a[1]).forEach(([name,cnt])=>{
+    const el = document.createElement('div');
+    el.className = 'tag-card' + (CHARTABLE[name]?' clickable':'');
+    el.innerHTML = `<div class="tname">${name}${CHARTABLE[name]?' 📈':''}</div><div class="tcount">${cnt}</div>`;
+    if (CHARTABLE[name]) {
+      el.onclick = () => {
+        document.querySelectorAll('.tag-card').forEach(c=>c.classList.remove('selected'));
+        el.classList.add('selected');
+        showHRChart(result.groups[name]);
+      };
+    }
+    grid.appendChild(el);
+  });
+}
+
+function fmtTime(s) {
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=Math.floor(s%60);
+  return h>0 ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`;
+}
+
+function showHRChart(records) {
+  const card = document.getElementById('card-chart');
+  card.style.display = '';
+
+  // 按原始记录顺序处理时间回绕（uint16 溢出，约每 65s 重置一次）
+  // 不预先排序，保留记录写入顺序，逐条检测时间倒退
+  const rawRecs = records.filter(r=>r.data&&r.data.hr_bpm!=null);
+
+  const pts = [];
+  let offset_ms = 0;
+  let prev_raw = -1;
+  // relative_time_ms 是 int16 存储，最大值约 32767ms（~32.7s）后重置为 0
+  // 检测时间倒退（当前值比上一条小 5s 以上），每次回绕加 32768ms
+  const WRAP_THRESHOLD = 5000; // 5s，正常心率采样不会跳退 5s
+  const WRAP_PERIOD = 32768;   // int16 溢出周期：32768ms
+  for (const rec of rawRecs) {
+    const t_raw = rec.data.relative_time_ms;
+    if (prev_raw >= 0 && t_raw < prev_raw - WRAP_THRESHOLD) {
+      offset_ms += WRAP_PERIOD;
+    }
+    const abs_ms = t_raw + offset_ms;
+    pts.push({t: Math.round(abs_ms / 100) / 10, v: rec.data.hr_bpm}); // 转为秒
+    prev_raw = t_raw;
+  }
+
+  if (!pts.length) return;
+
+  const vals = pts.map(p=>p.v);
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  const dur = pts[pts.length-1].t;
+
+  document.getElementById('hr-metrics').innerHTML = [
+    {l:'最高心率',v:max+' bpm'},{l:'最低心率',v:min+' bpm'},
+    {l:'平均心率',v:avg+' bpm'},{l:'运动时长',v:fmtTime(dur)},{l:'采样数',v:pts.length},
+  ].map(i=>`<div class="metric"><div class="ml">${i.l}</div><div class="mv">${i.v}</div></div>`).join('');
+
+  if (hrChart) { hrChart.destroy(); hrChart=null; }
+  const ctx = document.getElementById('hrChart').getContext('2d');
+  hrChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: pts.map(p=>p.t),
+      datasets: [{
+        label: '心率 bpm',
+        data: pts.map(p=>p.v),
+        borderColor: '#E24B4A',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: '#E24B4A',
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2,
+        fill: true,
+        backgroundColor: 'rgba(226,75,74,0.07)',
+        tension: 0.3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode:'index', intersect:false},
+      plugins: {
+        legend: {display:false},
+        tooltip: {
+          backgroundColor: '#1a1a1a',
+          titleColor: '#fff',
+          bodyColor: '#ddd',
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            title: items => '运动时间：' + fmtTime(Math.round(items[0].parsed.x)),
+            label: item => `  心率：${item.parsed.y} bpm`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type:'linear', min:0,
+          title:{display:true, text:'运动时间', font:{size:11}, color:'#888'},
+          ticks:{maxTicksLimit:10, color:'#888', font:{size:11}, callback:v=>fmtTime(v)},
+          grid:{color:'rgba(0,0,0,0.05)'},
+          border:{color:'rgba(0,0,0,0.12)'},
+        },
+        y: {
+          min: Math.max(40, min-10), max: max+10,
+          title:{display:true, text:'心率 (bpm)', font:{size:11}, color:'#888'},
+          ticks:{color:'#888', font:{size:11}},
+          grid:{color:'rgba(0,0,0,0.05)'},
+          border:{color:'rgba(0,0,0,0.12)'},
+        },
+      },
+    },
+  });
+  card.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+</script>
+</body>
+</html>
